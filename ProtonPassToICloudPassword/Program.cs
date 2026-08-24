@@ -8,10 +8,10 @@ StringBuilder personalFile = new (icloudHeader);
 
 string jsonFile = args.Length > 0 ? args[0] : "";
 
-if (jsonFile == null)
+if (string.IsNullOrWhiteSpace(jsonFile))
 {
-    Console.WriteLine("No JSON file specified.");
-    return;
+    WriteWarning("No JSON file specified. using default: data.json\n");
+    jsonFile = "data.json";
 }
 
 string jsonString = "";
@@ -41,15 +41,14 @@ foreach (var vault in exportData.Vaults)
 {
     if (vault.Value.Name == "Shared")
     {
-        int totalItemsInVault = vault.Value.Items.Count;
+        Console.WriteLine("Found " + vault.Value.Items.Count + $" items in {vault.Value.Name} vault.");
         ItemToLine(vault, sharedFile);
-        Console.WriteLine("Found " + totalItemsInVault + " items in Shared vault.");
+        
     }
     else if (vault.Value.Name == "Personal")
     {
-        int totalItemsInVault = vault.Value.Items.Count;
+        Console.WriteLine("Found " + vault.Value.Items.Count + $" items in {vault.Value.Name} vault.");
         ItemToLine(vault, personalFile);
-        Console.WriteLine("Found " + totalItemsInVault + " items in Personal vault.");
     }
 }
 
@@ -65,9 +64,13 @@ catch (Exception e)
     WriteError("Error writing files: " + e.Message);
 }
 
+Console.WriteLine("Finished writing files.");
+WriteError("Note: Import first SharedVault and assign it to the shared group.");
+
 static void ItemToLine(KeyValuePair<string, Vault> vault, StringBuilder builder)
 {
     int totalItems = 0;
+    int totalItemsIgnored = 0;
     int totalUrls = 0;
 
     foreach (var item in vault.Value.Items)
@@ -115,23 +118,29 @@ static void ItemToLine(KeyValuePair<string, Vault> vault, StringBuilder builder)
             totalItems++;
             totalUrls++;
         }
-        else if (item.Data.Type == "identity")
-        {
-            WriteError("Ignoring identity item: " + item.Data.Metadata.Name);
-        }
         else
         {
-            WriteError("Ignoring unknown item: " + item.Data.Metadata.Name);
+            WriteWarning($"  Ignoring {item.Data.Type} item: " + item.Data.Metadata.Name);
+            totalItemsIgnored++;
         }
     }
 
-    Console.WriteLine($"Done vault '{vault.Value.Name}'. Total items exported: {totalItems}, Total URLs exported: {totalUrls}");
+    Console.WriteLine($"Done vault '{vault.Value.Name}'.");
+    WriteWarning($"Total items {totalItems + totalItemsIgnored}");
+    WriteWarning($"Items exported: {totalItems}, URLs exported: {totalUrls}, items ignored: {totalItemsIgnored}\n");
 }
 
 static void WriteError(string message)
 {
     var previous = Console.ForegroundColor;
     Console.ForegroundColor = ConsoleColor.Red;
+    Console.WriteLine(message);
+    Console.ForegroundColor = previous;
+}
+static void WriteWarning(string message)
+{
+    var previous = Console.ForegroundColor;
+    Console.ForegroundColor = ConsoleColor.Yellow;
     Console.WriteLine(message);
     Console.ForegroundColor = previous;
 }
