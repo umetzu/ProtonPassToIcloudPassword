@@ -1,8 +1,9 @@
 ﻿using ProtonPassToICloudPassword;
+using System.Net.NetworkInformation;
 using System.Text;
 using System.Text.Json;
 
-string icloudHeader = "Title,URL,Username,Password,Notes,OTPAuth";
+string icloudHeader = "Title,URL,Username,Password,Notes,OTPAuth\n";
 StringBuilder sharedFile = new (icloudHeader);
 StringBuilder personalFile = new (icloudHeader);
 
@@ -72,23 +73,30 @@ static void ItemToLine(KeyValuePair<string, Vault> vault, StringBuilder builder)
     int totalItems = 0;
     int totalItemsIgnored = 0;
     int totalUrls = 0;
+    int notesUrl = 0;
+    int fakeUrl = 0;
+
 
     foreach (var item in vault.Value.Items)
     {
         if (item.Data.Type == "login")
         {
-            string title = item.Data.Metadata.Name;
+            
             string username = item.Data.Content.ItemUsername;
             string password = item.Data.Content.Password;
-            string notes = item.Data.Metadata.Note;
+            string notes =  item.Data.Metadata.Note ;
             string OTPAuth = item.Data.Content.TotpUri;
+            List<string> urls = [];
+            bool hasIp = false;
 
             if (string.IsNullOrWhiteSpace(username))
             {
                 username = item.Data.Content.ItemEmail;
             }
 
-            if (!string.IsNullOrWhiteSpace(item.Data.Content.ItemEmail))
+            string title = item.Data.Metadata.Name + $" ({username})";
+
+            if (!string.IsNullOrWhiteSpace(item.Data.Content.ItemEmail) && username != item.Data.Content.ItemEmail)
             {
                 if (!string.IsNullOrWhiteSpace(notes))
                 {
@@ -100,10 +108,48 @@ static void ItemToLine(KeyValuePair<string, Vault> vault, StringBuilder builder)
 
             foreach (var url in item.Data.Content.Urls)
             {
-                string line = $"{title},{url},{username},{password},{notes},{OTPAuth}";
+                if (Uri.TryCreate(url, UriKind.Absolute, out Uri? uri))
+                {
+                    if (uri.HostNameType == UriHostNameType.IPv4)
+                    {
+                        if (!string.IsNullOrWhiteSpace(notes))
+                        {
+                            notes += "\n";
+                        }
+
+                        notes += "Lan: " + url;
+
+                        WriteError($"  Warning: URL '{url}' was set on notes because icloud does not support IP addresses.");
+                        notesUrl++;
+                        hasIp = true;
+                        continue;
+                    }
+                }
+
+                urls.Add(url);                
+            }
+
+            if (urls.Count == 0)
+            {
+                string tld = hasIp ? "local" : "nourl";
+
+                var newUrl = item.Data.Metadata.Name.Replace(" ", "-").Replace("http://", "").Replace("https://", "");
+                newUrl = $"https://{newUrl}.{tld}";
+
+                urls.Add(newUrl);
+
+                WriteWarning($"  Warning: No URL found for item '{title}', replacing with {newUrl}");
+
+                fakeUrl++;
+            }   
+
+            foreach (var url in urls)
+            {
+                string line = $"{title},{url},{username},{password},\"{notes}\",{OTPAuth}";
                 builder.AppendLine(line);
                 totalUrls++;
             }
+
             totalItems++;
         }
         else if (item.Data.Type == "creditCard")
@@ -113,7 +159,7 @@ static void ItemToLine(KeyValuePair<string, Vault> vault, StringBuilder builder)
             string password = item.Data.Content.ExpirationDate + " " + item.Data.Content.VerificationNumber;
             string notes = item.Data.Metadata.Note;
 
-            string line = $"{title},,{username},{password},{notes},";
+            string line = $"{title},,{username},{password},\"{notes}\",";
             builder.AppendLine(line);
             totalItems++;
             totalUrls++;
@@ -127,7 +173,8 @@ static void ItemToLine(KeyValuePair<string, Vault> vault, StringBuilder builder)
 
     Console.WriteLine($"Done vault '{vault.Value.Name}'.");
     WriteWarning($"Total items {totalItems + totalItemsIgnored}");
-    WriteWarning($"Items exported: {totalItems}, URLs exported: {totalUrls}, items ignored: {totalItemsIgnored}\n");
+    WriteWarning($"Items exported: {totalItems}, URLs exported: {totalUrls}, items ignored: {totalItemsIgnored}");
+    WriteWarning($"Items with notes URL: {notesUrl}, items with fake URL: {fakeUrl}\n");
 }
 
 static void WriteError(string message)
