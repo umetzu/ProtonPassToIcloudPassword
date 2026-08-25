@@ -91,10 +91,16 @@ static int ItemToLine(KeyValuePair<string, Vault> vault, StringBuilder builder)
             string password = item.Data.Content.Password;
             string notes =  item.Data.Metadata.Note ;
             string OTPAuth = item.Data.Content.TotpUri;
-            
+
             if (string.IsNullOrWhiteSpace(username))
             {
                 username = item.Data.Content.ItemEmail;
+            }
+
+            if (string.IsNullOrWhiteSpace(password))
+            {
+                password = username;
+                WriteError($"  Missing password, defaulting to username {item.Data.Metadata.Name}");
             }
 
             string title = item.Data.Metadata.Name;
