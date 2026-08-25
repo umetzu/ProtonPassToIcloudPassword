@@ -72,10 +72,7 @@ static void ItemToLine(KeyValuePair<string, Vault> vault, StringBuilder builder)
 {
     int totalItems = 0;
     int totalItemsIgnored = 0;
-    int totalUrls = 0;
-    int notesUrl = 0;
-    int fakeUrl = 0;
-
+    int itemsWithMoreUrl = 0;
 
     foreach (var item in vault.Value.Items)
     {
@@ -86,15 +83,18 @@ static void ItemToLine(KeyValuePair<string, Vault> vault, StringBuilder builder)
             string password = item.Data.Content.Password;
             string notes =  item.Data.Metadata.Note ;
             string OTPAuth = item.Data.Content.TotpUri;
-            List<string> urls = [];
-            bool hasIp = false;
-
+            
             if (string.IsNullOrWhiteSpace(username))
             {
                 username = item.Data.Content.ItemEmail;
             }
 
-            string title = item.Data.Metadata.Name + $" ({username})";
+            string title = item.Data.Metadata.Name;
+
+            if (!string.IsNullOrWhiteSpace(username))
+            {
+                title += $" ({username})";
+            }
 
             if (!string.IsNullOrWhiteSpace(item.Data.Content.ItemEmail) && username != item.Data.Content.ItemEmail)
             {
@@ -106,49 +106,23 @@ static void ItemToLine(KeyValuePair<string, Vault> vault, StringBuilder builder)
                 notes += "Email: " + item.Data.Content.ItemEmail;
             }
 
-            foreach (var url in item.Data.Content.Urls)
+            var topUrl = TopUrl(item.Data.Content.Urls);
+            string noteUrls = UrlNotes(item.Data.Content.Urls, topUrl, notes);
+
+            if (noteUrls != notes)
             {
-                if (Uri.TryCreate(url, UriKind.Absolute, out Uri? uri))
-                {
-                    if (uri.HostNameType == UriHostNameType.IPv4)
-                    {
-                        if (!string.IsNullOrWhiteSpace(notes))
-                        {
-                            notes += "\n";
-                        }
-
-                        notes += "Lan: " + url;
-
-                        WriteError($"  Warning: URL '{url}' was set on notes because icloud does not support IP addresses.");
-                        notesUrl++;
-                        hasIp = true;
-                        continue;
-                    }
-                }
-
-                urls.Add(url);                
+                notes = noteUrls;
+                itemsWithMoreUrl++;
             }
 
-            if (urls.Count == 0)
+            if (string.IsNullOrWhiteSpace(topUrl))
             {
-                string tld = hasIp ? "local" : "nourl";
-
-                var newUrl = item.Data.Metadata.Name.Replace(" ", "-").Replace("http://", "").Replace("https://", "");
-                newUrl = $"https://{newUrl}.{tld}";
-
-                urls.Add(newUrl);
-
-                WriteWarning($"  Warning: No URL found for item '{title}', replacing with {newUrl}");
-
-                fakeUrl++;
-            }   
-
-            foreach (var url in urls)
-            {
-                string line = $"{title},{url},{username},{password},\"{notes}\",{OTPAuth}";
-                builder.AppendLine(line);
-                totalUrls++;
+                string parsedTitle = item.Data.Metadata.Name.Trim().Replace(" ", "-").Replace("http://", "").Replace("https://", "").ToLower();
+                topUrl = $"{parsedTitle}.nourl";
             }
+
+            string line = $"{title},{topUrl},{username},{password},\"{notes}\",{OTPAuth}";
+            builder.AppendLine(line);
 
             totalItems++;
         }
@@ -162,7 +136,6 @@ static void ItemToLine(KeyValuePair<string, Vault> vault, StringBuilder builder)
             string line = $"{title},,{username},{password},\"{notes}\",";
             builder.AppendLine(line);
             totalItems++;
-            totalUrls++;
         }
         else
         {
@@ -173,8 +146,49 @@ static void ItemToLine(KeyValuePair<string, Vault> vault, StringBuilder builder)
 
     Console.WriteLine($"Done vault '{vault.Value.Name}'.");
     WriteWarning($"Total items {totalItems + totalItemsIgnored}");
-    WriteWarning($"Items exported: {totalItems}, URLs exported: {totalUrls}, items ignored: {totalItemsIgnored}");
-    WriteWarning($"Items with notes URL: {notesUrl}, items with fake URL: {fakeUrl}\n");
+    WriteWarning($"Items exported: {totalItems}, items ignored: {totalItemsIgnored}, items with multiple URLs: {itemsWithMoreUrl}\n");
+}
+
+static string TopUrl(List<string> urls)
+{
+    foreach (var url in urls)
+    {
+        if (Uri.TryCreate(url, UriKind.Absolute, out Uri? uri))
+        {
+            if (uri.HostNameType != UriHostNameType.IPv4)
+            {
+                return url;
+            }
+        }
+    }
+
+    return "";
+}
+
+static string UrlNotes(List<string> urls, string topUrl, string notes)
+{
+    bool urlsAdded = false;
+
+    foreach (var url in urls)
+    {
+        if (url != topUrl)
+        {
+            if (!string.IsNullOrWhiteSpace(notes))
+            {
+                notes += "\n";
+            }
+
+            if (!urlsAdded)
+            {
+                notes += "URLs: \n";
+            }
+
+            notes += $"{url}";
+            urlsAdded = true;
+        }
+    }
+
+    return notes;
 }
 
 static void WriteError(string message)
