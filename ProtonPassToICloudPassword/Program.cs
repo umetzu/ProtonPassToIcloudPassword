@@ -37,18 +37,21 @@ catch (Exception e)
     return;
 }
 
+int sharedItems = 0;
+int personalItems = 0;
+
 foreach (var vault in exportData.Vaults)
 {
     if (vault.Value.Name == "Shared")
     {
         Console.WriteLine("Found " + vault.Value.Items.Count + $" items in {vault.Value.Name} vault.");
-        ItemToLine(vault, sharedFile);
+        sharedItems = ItemToLine(vault, sharedFile);
         
     }
     else if (vault.Value.Name == "Personal")
     {
         Console.WriteLine("Found " + vault.Value.Items.Count + $" items in {vault.Value.Name} vault.");
-        ItemToLine(vault, personalFile);
+        personalItems = ItemToLine(vault, personalFile);
     }
 }
 
@@ -56,8 +59,8 @@ Console.WriteLine("Writing files to {0}", Directory.GetCurrentDirectory());
 
 try
 {
-    File.WriteAllText("SharedVault.csv", sharedFile.ToString());
-    File.WriteAllText("PersonalVault.csv", personalFile.ToString());
+    File.WriteAllText($"SharedVault-{sharedItems}.items.csv", sharedFile.ToString());
+    File.WriteAllText($"PersonalVault-{personalItems}.items.csv", personalFile.ToString());
 }
 catch (Exception e)
 {
@@ -67,7 +70,7 @@ catch (Exception e)
 Console.WriteLine("Finished writing files.");
 WriteError("Note: Import first SharedVault and assign it to the shared group.");
 
-static void ItemToLine(KeyValuePair<string, Vault> vault, StringBuilder builder)
+static int ItemToLine(KeyValuePair<string, Vault> vault, StringBuilder builder)
 {
     int totalItems = 0;
     int totalItemsIgnored = 0;
@@ -144,8 +147,9 @@ static void ItemToLine(KeyValuePair<string, Vault> vault, StringBuilder builder)
     }
 
     Console.WriteLine($"Done vault '{vault.Value.Name}'.");
-    WriteWarning($"Total items {totalItems + totalItemsIgnored}");
     WriteWarning($"Items exported: {totalItems}, items ignored: {totalItemsIgnored}, items with multiple URLs: {itemsWithMoreUrl}\n");
+
+    return totalItems;
 }
 
 static string TopUrl(List<string> urls)
