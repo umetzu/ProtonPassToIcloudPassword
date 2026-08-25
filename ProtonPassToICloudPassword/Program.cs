@@ -78,9 +78,15 @@ static int ItemToLine(KeyValuePair<string, Vault> vault, StringBuilder builder)
 
     foreach (var item in vault.Value.Items)
     {
+        if (item.State != 1)
+        {
+            WriteWarning($"  Ignoring deleted item {item.Data.Metadata.Name}");
+            totalItemsIgnored++;
+            continue;
+        }
+
         if (item.Data.Type == "login")
         {
-            
             string username = item.Data.Content.ItemUsername;
             string password = item.Data.Content.Password;
             string notes =  item.Data.Metadata.Note ;
@@ -92,6 +98,7 @@ static int ItemToLine(KeyValuePair<string, Vault> vault, StringBuilder builder)
             }
 
             string title = item.Data.Metadata.Name;
+            OTPAuth = FixOtpUri(OTPAuth, title);    
 
             if (!string.IsNullOrWhiteSpace(username))
             {
@@ -192,6 +199,34 @@ static string UrlNotes(List<string> urls, string topUrl, string notes)
     }
 
     return notes;
+}
+
+static string FixOtpUri(string otpUri, string defaultLabel)
+{
+    if (string.IsNullOrWhiteSpace(otpUri))
+    {
+        return otpUri;
+    }
+
+    if (!Uri.TryCreate(otpUri, UriKind.Absolute, out Uri uri))
+    {
+        return otpUri;
+    }
+
+    if (uri.Scheme != "otpauth" || uri.Host != "totp")
+    {
+        return otpUri;
+    }
+
+    if (!string.IsNullOrEmpty(uri.AbsolutePath) && uri.AbsolutePath.Length > 1)
+    {
+        return otpUri;
+    }
+
+    WriteError("  Fixing OTP URI: " + otpUri);
+
+    string encodedLabel = Uri.EscapeDataString(defaultLabel);
+    return $"{uri.Scheme}://{uri.Host}/{encodedLabel}{uri.Query}";    
 }
 
 static void WriteError(string message)
